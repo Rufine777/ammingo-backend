@@ -6,7 +6,7 @@ import os
 
 from app.db.db import get_db
 from app.db.models import User
-from app.models.profile import UploadImageResponse, UserProfileResponse
+from app.models.profile import UploadImageResponse, UserProfileResponse, UpdateUserRequest
 
 router = APIRouter()
 
@@ -66,5 +66,39 @@ def get_user_profile(user_id: int, db: Session = Depends(get_db)):
         name=user.name,
         email=user.email,
         profile_image=image
+    )
+
+
+@router.patch("/profile/{user_id}", response_model=UserProfileResponse)
+def update_user_profile(
+    user_id: int,
+    data: UpdateUserRequest,
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if data.username is not None:
+        existing = db.query(User).filter(
+            User.username == data.username,
+            User.id != user_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Username already taken")
+        user.username = data.username
+
+    if data.name is not None:
+        user.name = data.name
+
+    db.commit()
+    db.refresh(user)
+
+    return UserProfileResponse(
+        user_id=user.id,
+        username=user.username,
+        name=user.name,
+        email=user.email,
+        profile_image=user.profile_image if user.profile_image else "/uploads/default.png"
     )
 
