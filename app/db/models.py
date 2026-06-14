@@ -53,6 +53,7 @@ class BingoTiles(Base):
     bingo_char = Column(String, nullable=False)
     bingo_id = Column(Integer, ForeignKey("bingo.id"))
     image_url = Column(String, unique=True)
+    random_fact = Column(Text, nullable=False)
 
     game_user_bingo = relationship("Bingo", back_populates="bingo_tiles")
 

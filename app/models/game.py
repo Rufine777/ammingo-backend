@@ -67,3 +67,8 @@ class BingoBoardResponse(BaseModel):
     game_id: int
     points: int
     tiles: list[TileResponse]
+
+
+class TileSubmit(BaseModel):
+    bingo_id: int
+    friend_code: int
