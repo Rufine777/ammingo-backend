@@ -1,13 +1,14 @@
-from fastapi import Request, status
+from fastapi import Request, status, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware
 from jose import jwt
 import os
 from datetime import datetime
 from app.routes.auth import generate_access_token
 from app.db.models import User
-from app.db.db import SessionLocal
+from app.db.db import SessionLocal, get_db
 
 secret = os.environ.get(
     "JWT_SECRET", default="dkjfaidfjei4ou9028ruq208mxuHHDUFGHjfeu9!#@*u9fj"
@@ -43,3 +44,20 @@ class VerifyToken(BaseHTTPMiddleware):
         response = await call_next(request)
         response.set_cookies(key="access_token", value=token, httponly=True, secure=True)
         return response
+    
+def get_current_user(request: Request, db: Session = Depends(get_db)):
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    
+    payload = jwt.decode(token, secret, algorithms=[algorithm])
+    user_id = payload.get("user_id")
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    
+    return user
