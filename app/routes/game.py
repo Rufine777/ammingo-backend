@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
 
 import secrets
 import string
@@ -21,6 +20,9 @@ from app.models.game import (
     JoinGameResponse,
     LobbyResponse,
     StartGameResponse,
+    GameDetailResponse,
+    BingoBoardResponse,
+    TileResponse,
 )
 import random
 
@@ -173,11 +175,79 @@ def create_bingo_matrix(db: Session, game: Game, user_id: int):
     size = game.board_size
     total_tiles = size * size
 
-    bingo_tiles = db.query(BingoTiles).all()
+    other_players = (
+        db.query(User)
+        .join(Bingo, Bingo.user_id == User.id)
+        .filter(Bingo.game_id == game.id)
+        .filter(User.id != user_id)
+        .all()
+    )
 
-    random.shuffle(bingo_tiles)
+    if len(other_players) < total_tiles:
+        raise HTTPException(
+            status_code=400, detail=f"Not enough players to fill a {size}x{size} board"
+        )
 
-    selected_tiles = bingo_tiles[:total_tiles]
+    random.shuffle(other_players)
+    selected_players = other_players[:total_tiles]
 
-    for tile in selected_tiles:
-        tile.bingo_id = board.id
+    for i, player in enumerate(selected_players):
+        new_tile = BingoTiles(
+            row=i // size,
+            col=i % size,
+            bingo_char=player.name.strip()[0].upper(),
+            bingo_id=board.id,
+        )
+        db.add(new_tile)
+
+
+@router.get("/games/{code}", response_model=GameDetailResponse)
+def get_game_details(code: str, db: Session = Depends(get_db)):
+    game = db.query(Game).filter(Game.code == code).first()
+
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    return GameDetailResponse(
+        game_id=game.id,
+        host_id=game.host_id,
+        description=game.description,
+        location=game.location,
+        start_time=game.start_time,
+        end_time=game.end_time,
+        code=game.code,
+        board_size=game.board_size,
+        qr_img=f"data:image/png;base64,{game.qr_img}" if game.qr_img else None,
+    )
+
+
+@router.get("/games/{code}/board/{user_id}", response_model=BingoBoardResponse)
+def get_user_board(code: str, user_id: int, db: Session = Depends(get_db)):
+
+    game = db.query(Game).filter(Game.code == code).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    board = db.query(Bingo).filter_by(game_id=game.id, user_id=user_id).first()
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    tiles = (
+        db.query(BingoTiles)
+        .filter(BingoTiles.bingo_id == board.id)
+        .order_by(BingoTiles.row, BingoTiles.col)
+        .all()
+    )
+
+    return BingoBoardResponse(
+        bingo_id=board.id,
+        user_id=board.user_id,
+        game_id=board.game_id,
+        points=board.points,
+        tiles=[
+            TileResponse(
+                id=tile.id, row=tile.row, col=tile.col, bingo_char=tile.bingo_char
+            )
+            for tile in tiles
+        ],
+    )

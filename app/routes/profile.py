@@ -63,7 +63,7 @@ def get_user_profile(user_id: int, db: Session = Depends(get_db)):
         username=user.username,
         name=user.name,
         email=user.email,
-        profile_image=image
+        profile_image=image,
     )
 
 
