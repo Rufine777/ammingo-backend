@@ -38,6 +38,8 @@ async def verify_token(request, call_next):
         response = await call_next(request)
         response.set_cookies(key="access_token", value=token, httponly=True, secure=True)
         return response
+    except Exception as e:
+        raise HTTPException(status=500, detail=str(e))
     
 def get_current_user(request: Request, db: Session = Depends(get_db)):
     token = request.cookies.get("access_token")
