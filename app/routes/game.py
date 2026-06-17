@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 import secrets
@@ -7,6 +7,8 @@ import qrcode
 from io import BytesIO
 import base64
 import os
+import uuid
+import shutil
 
 from app.db.db import get_db
 from app.db.models import Game, Bingo, User, BingoTiles
@@ -23,10 +25,12 @@ from app.models.game import (
     GameDetailResponse,
     BingoBoardResponse,
     TileResponse,
+    TileSubmit,
 )
 import random
 
 router = APIRouter()
+UPLOAD_DIR = "uploads/"
 
 
 def generate_game_code():
@@ -251,3 +255,78 @@ def get_user_board(code: str, user_id: int, db: Session = Depends(get_db)):
             for tile in tiles
         ],
     )
+
+
+@router.post("/games/tile-submit", response_model=TileSubmit)
+def tile_submit(
+    bingo_id: int,
+    row: int,
+    col: int,
+    friend_name: str,
+    friend_code: int,
+    fact: str,
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    friend = (
+        db.query(User)
+        .filter(User.name == friend_name, User.code == str(friend_code))
+        .first()
+    )
+    if not friend:
+        raise HTTPException(status_code=404, detail="Friend not found or code mismatch")
+    bingo = db.query(Bingo).filter(Bingo.id == bingo_id).first()
+    if not bingo:
+        raise HTTPException(status_code=404, detail="Bingo board not found")
+
+    tile = (
+        db.query(BingoTiles)
+        .filter(
+            BingoTiles.bingo_id == bingo_id,
+            BingoTiles.row == row,
+            BingoTiles.col == col,
+        )
+        .first()
+    )
+    if not tile:
+        raise HTTPException(status_code=404, detail="Tile not found")
+    if tile.image_url:
+        raise HTTPException(status_code=400, detail="Tile already submitted")
+
+    ext = os.path.splitext(image.filename)[-1]
+    filename = f"{uuid.uuid4().hex}{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+
+    with open(filepath, "wb") as buffer:
+        shutil.copyfileobj(image.file, buffer)
+
+    tile.image_url = filepath
+    tile.random_fact = fact
+    db.commit()
+    db.refresh(tile)
+
+    n = bingo.game.board_size
+    submitted = {
+        (i.row, i.col)
+        for i in db.query(BingoTiles).filter(BingoTiles.bingo_id == bingo_id).all()
+        if i.image_url
+    }
+
+    points = 0
+
+    if all((row, c) in submitted for c in range(n)):
+        points += 500
+
+    if all((r, col) in submitted for r in range(n)):
+        points += 500
+
+    if row == col and all((i, i) in submitted for i in range(n)):
+        points += 500
+    if row + col == n - 1 and all((i, n - 1 - i) in submitted for i in range(n)):
+        points += 500
+
+    points = points if points > 0 else 100
+    bingo.points += points
+    db.commit()
+
+    return tile
