@@ -23,6 +23,8 @@ from app.models.game import (
     GameDetailResponse,
     BingoBoardResponse,
     TileResponse,
+    LeaderboardEntry,
+    LeaderboardResponse,
 )
 import random
 
@@ -251,3 +253,24 @@ def get_user_board(code: str, user_id: int, db: Session = Depends(get_db)):
             for tile in tiles
         ],
     )
+
+@router.get("/games/{code}/leaderboard", response_model=LeaderboardResponse)
+def get_leaderboard(code: str, db: Session = Depends(get_db)):
+    game = db.query(Game).filter(Game.code == code).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    results = (
+        db.query(User.code, User.name, User.username, Bingo.points)
+        .join(Bingo, Bingo.user_id == User.id)
+        .filter(Bingo.game_id == game.id)
+        .order_by(Bingo.points.desc())
+        .all()
+    )
+
+    leaderboard = [
+        LeaderboardEntry(code=r.code,name=r.name, username=r.username, points=r.points)
+        for r in results
+    ]
+
+    return LeaderboardResponse(leaderboard=leaderboard)
