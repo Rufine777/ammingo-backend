@@ -50,8 +50,8 @@ def upload_profile_image(
 
 
 @router.get("/profile/{user_id}", response_model=UserProfileResponse)
-def get_user_profile(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
+def get_user_profile(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    user = db.query(User).filter(User.id == current_user.id).first()
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -59,7 +59,6 @@ def get_user_profile(user_id: int, db: Session = Depends(get_db)):
     image = user.profile_image if user.profile_image else "/uploads/default.png"
 
     return UserProfileResponse(
-        user_id=user.id,
         username=user.username,
         name=user.name,
         email=user.email,

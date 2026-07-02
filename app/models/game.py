@@ -16,10 +16,6 @@ class StartGameRequest(BaseModel):
 class JoinGameRequest(BaseModel):
     pass
 
-
-
-
-
 class CreateGameResponse(BaseModel):
     game_id: int
     join_code: str
@@ -29,7 +25,6 @@ class CreateGameResponse(BaseModel):
 class JoinGameResponse(BaseModel):
     message: str
     game_id: int
-    user_id: int
 
 
 class LobbyResponse(BaseModel):
@@ -45,7 +40,6 @@ class StartGameResponse(BaseModel):
 
 class GameDetailResponse(BaseModel):
     game_id: int
-    host_id: int
     description: str
     location: str
     start_time: datetime
@@ -64,7 +58,6 @@ class TileResponse(BaseModel):
 
 class BingoBoardResponse(BaseModel):
     bingo_id: int
-    user_id: int
     game_id: int
     points: int
     tiles: list[TileResponse]
