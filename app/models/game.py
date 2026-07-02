@@ -4,19 +4,20 @@ from datetime import datetime
 
 
 class CreateGameRequest(BaseModel):
-    host_id: int
     description: str
     location: str
     duration: int
 
 
 class StartGameRequest(BaseModel):
-    user_id: int
     size: int
 
 
 class JoinGameRequest(BaseModel):
-    user_id: int
+    pass
+
+
+
 
 
 class CreateGameResponse(BaseModel):
@@ -76,3 +77,7 @@ class LeaderboardEntry(BaseModel):
 
 class LeaderboardResponse(BaseModel):
     leaderboard: list[LeaderboardEntry]
+
+class TileSubmit(BaseModel):
+    bingo_id: int
+    friend_code: int

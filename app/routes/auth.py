@@ -45,7 +45,7 @@ otps = {}  # For storing otp while logging in
 def generate_access_token(user_id: str) -> str:
     payload = {
         "user_id": user_id,
-        "exp": datetime.now(timezone.utc) + timedelta(seconds1=expiry_time),
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=expiry_time),
     }
     token = jwt.encode(payload, secret, algorithm)
     return token

@@ -7,6 +7,7 @@ import os
 from app.db.db import get_db
 from app.db.models import User
 from app.models.profile import UploadImageResponse, UserProfileResponse, UpdateUserRequest
+from app.middlewares.verify_token import get_current_user
 
 router = APIRouter()
 
@@ -18,19 +19,16 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @router.post("/profile/upload", response_model=UploadImageResponse)
 def upload_profile_image(
-    user_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
+    
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="Only JPEG, PNG and WEBP allowed")
 
-    if user.profile_image and "default" not in user.profile_image:
-        old_path = user.profile_image.lstrip("/")
+    if current_user.profile_image and "default" not in current_user.profile_image:
+        old_path = current_user.profile_image.lstrip("/")
         if os.path.exists(old_path):
             os.remove(old_path)
 
@@ -41,13 +39,13 @@ def upload_profile_image(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    user.profile_image = f"/uploads/{filename}"
+    current_user.profile_image = f"/uploads/{filename}"
     db.commit()
 
     return UploadImageResponse(
         message="Profile image uploaded successfully",
-        user_id=user.id,
-        profile_image=user.profile_image,
+        user_id=current_user.id,
+        profile_image=current_user.profile_image
     )
 
 
@@ -69,36 +67,35 @@ def get_user_profile(user_id: int, db: Session = Depends(get_db)):
     )
 
 
-@router.patch("/profile/{user_id}", response_model=UserProfileResponse)
+@router.patch("/profile/me", response_model=UserProfileResponse)
 def update_user_profile(
-    user_id: int,
     data: UpdateUserRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
+    
     if data.username is not None:
         existing = db.query(User).filter(
             User.username == data.username,
-            User.id != user_id
+            User.id != current_user.id  
         ).first()
         if existing:
             raise HTTPException(status_code=400, detail="Username already taken")
-        user.username = data.username
+        current_user.username = data.username  
 
     if data.name is not None:
-        user.name = data.name
+        current_user.name = data.name  
 
     db.commit()
-    db.refresh(user)
+    db.refresh(current_user)
 
     return UserProfileResponse(
-        user_id=user.id,
-        username=user.username,
-        name=user.name,
-        email=user.email,
-        profile_image=user.profile_image if user.profile_image else "/uploads/default.png"
+        user_id=current_user.id,
+        username=current_user.username,
+        name=current_user.name,
+        email=current_user.email,
+        profile_image=current_user.profile_image if current_user.profile_image else "/uploads/default.png"
     )
+
+
 
