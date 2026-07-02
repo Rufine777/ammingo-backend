@@ -11,6 +11,7 @@ import uuid
 import shutil
 
 from app.db.db import get_db
+from app.middlewares.verify_token import get_current_user
 from app.db.models import Game, Bingo, User, BingoTiles
 
 from datetime import datetime, timedelta, timezone
@@ -90,26 +91,29 @@ def create_game(data: CreateGameRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/games/join/{code}", response_model=JoinGameResponse)
-def join_game(code: str, data: JoinGameRequest, db: Session = Depends(get_db)):
+def join_game(code: str, data: JoinGameRequest, 
+      db: Session = Depends(get_db), 
+      current_user = Depends(get_current_user)
+    ):
 
     game = db.query(Game).filter(Game.code == code).first()
 
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
 
-    existing = db.query(Bingo).filter_by(game_id=game.id, user_id=data.user_id).first()
+    existing = db.query(Bingo).filter_by(game_id=game.id, user_id=current_user.id).first()
 
     if existing:
         return {
             "message": "User already joined",
             "game_id": game.id,
-            "user_id": data.user_id,
+            "username": current_user.username
         }
 
     if game.board_size is not None:
         raise HTTPException(status_code=400, detail="Game already started")
 
-    board = Bingo(game_id=game.id, user_id=data.user_id)
+    board = Bingo(game_id=game.id, user_id=current_user.id)
 
     db.add(board)
     db.commit()
@@ -117,7 +121,7 @@ def join_game(code: str, data: JoinGameRequest, db: Session = Depends(get_db)):
     return {
         "message": "Joined successfully",
         "game_id": game.id,
-        "user_id": data.user_id,
+        "username": current_user.username,
     }
 
 
@@ -146,14 +150,17 @@ def get_lobby(code: str, db: Session = Depends(get_db)):
 
 
 @router.post("/games/{code}/start", response_model=StartGameResponse)
-def start_game(code: str, data: StartGameRequest, db: Session = Depends(get_db)):
+def start_game(code: str, data: StartGameRequest, 
+               db: Session = Depends(get_db), 
+               current_user: User = Depends(get_current_user)
+    ):
 
     game = db.query(Game).filter(Game.code == code).first()
 
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
 
-    if data.user_id != game.host_id:
+    if current_user.id != game.host_id:
         raise HTTPException(status_code=403, detail="Only host can start the game")
 
     if game.board_size is not None:
@@ -227,14 +234,14 @@ def get_game_details(code: str, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/games/{code}/board/{user_id}", response_model=BingoBoardResponse)
-def get_user_board(code: str, user_id: int, db: Session = Depends(get_db)):
+@router.get("/games/{code}/board/", response_model=BingoBoardResponse)
+def get_user_board(code: str,current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
 
     game = db.query(Game).filter(Game.code == code).first()
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
 
-    board = db.query(Bingo).filter_by(game_id=game.id, user_id=user_id).first()
+    board = db.query(Bingo).filter_by(game_id=game.id, user_id=current_user.id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -247,7 +254,7 @@ def get_user_board(code: str, user_id: int, db: Session = Depends(get_db)):
 
     return BingoBoardResponse(
         bingo_id=board.id,
-        user_id=board.user_id,
+        username=current_user.username,
         game_id=board.game_id,
         points=board.points,
         tiles=[
