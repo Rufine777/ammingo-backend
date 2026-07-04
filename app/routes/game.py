@@ -215,7 +215,7 @@ def create_bingo_matrix(db: Session, game: Game, user_id: int):
 
 
 @router.get("/games/{code}", response_model=GameDetailResponse)
-def get_game_details(code: str, db: Session = Depends(get_db)):
+def get_game_details(code: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     game = db.query(Game).filter(Game.code == code).first()
 
     if not game:
@@ -223,7 +223,7 @@ def get_game_details(code: str, db: Session = Depends(get_db)):
 
     return GameDetailResponse(
         game_id=game.id,
-        host_id=game.host_id,
+        host_name=current_user.name,
         description=game.description,
         location=game.location,
         start_time=game.start_time,
@@ -292,14 +292,14 @@ def tile_submit(
     row: int,
     col: int,
     friend_name: str,
-    friend_code: int,
+    friend_code: str,
     fact: str,
     image: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     friend = (
         db.query(User)
-        .filter(User.name == friend_name, User.code == str(friend_code))
+        .filter(User.name == friend_name, User.code == friend_code)
         .first()
     )
     if not friend:

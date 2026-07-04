@@ -40,6 +40,7 @@ class StartGameResponse(BaseModel):
 
 class GameDetailResponse(BaseModel):
     game_id: int
+    host_name: str
     description: str
     location: str
     start_time: datetime
