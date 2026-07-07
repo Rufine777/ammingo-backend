@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
 import secrets
@@ -288,12 +288,12 @@ def get_leaderboard(code: str, db: Session = Depends(get_db)):
 
 @router.post("/games/tile-submit", response_model=TileSubmit)
 def tile_submit(
-    bingo_id: int,
-    row: int,
-    col: int,
-    friend_name: str,
-    friend_code: str,
-    fact: str,
+    bingo_id: int = Form(...),
+    row: int = Form(...),
+    col: int = Form(...),
+    friend_name: str = Form(...),
+    friend_code: str = Form(...),
+    fact: str = Form(...),
     image: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
