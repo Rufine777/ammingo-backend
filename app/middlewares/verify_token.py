@@ -15,10 +15,11 @@ secret = os.environ.get(
     "JWT_SECRET", default="dkjfaidfjei4ou9028ruq208mxuHHDUFGHjfeu9!#@*u9fj"
 )
 algorithm = os.environ.get("HASH_ALGORITHM", default="HS256")
+EXCLUDED_PREFIXES = ("/api/login/", "/docs", "/redoc", "/openapi.json")
 
 
 async def verify_token(request, call_next):
-    if request.url.path.startswith("/api/login/"):
+    if request.url.path.startswith(EXCLUDED_PREFIXES):
         return await call_next(request)
     token = request.cookies.get("access_token")
     if not token:
@@ -36,7 +37,7 @@ async def verify_token(request, call_next):
         if datetime.fromtimestamp(exp) < datetime.now():
             token = generate_access_token(user_id)
         response = await call_next(request)
-        response.set_cookies(key="access_token", value=token, httponly=True, secure=True)
+        response.set_cookie(key="access_token", value=token, httponly=True, secure=True)
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
