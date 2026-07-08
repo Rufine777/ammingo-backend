@@ -23,23 +23,25 @@ async def verify_token(request, call_next):
     token = request.cookies.get("access_token")
     if not token:
         return JSONResponse(status_code=403, content={"error": "Unauthorized"})
-    payload = jwt.decode(token, secret, algorithms=[algorithm])
-    user_id = payload["user_id"]
-    exp = payload["exp"]
-    query = select(User).where(User.id == user_id)
-    db = next(get_db())
     try:
+        payload = jwt.decode(token, secret, algorithms=[algorithm])
+        user_id = payload["user_id"]
+        exp = payload["exp"]
+        query = select(User).where(User.id == user_id)
+        db = SessionLocal()
         request.state.db = db
         user = db.execute(query).scalars().first()
         if not user:
             return JSONResponse(status_code=403, content={"error": "Unauthorized"})
-        if datetime.fromtimestamp(exp) > datetime.now():
+        if datetime.fromtimestamp(exp) < datetime.now():
             token = generate_access_token(user_id)
         response = await call_next(request)
         response.set_cookies(key="access_token", value=token, httponly=True, secure=True)
         return response
     except Exception as e:
-        raise HTTPException(status=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
     
 def get_current_user(request: Request, db: Session = Depends(get_db)):
     token = request.cookies.get("access_token")
