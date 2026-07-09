@@ -143,10 +143,20 @@ def get_lobby(code: str, db: Session = Depends(get_db)):
 
     player_names = [p.name for p in players]
 
+    total_players = len(player_names)
+    if total_players > 25:
+        available_sizes = [5]
+    elif total_players > 16:
+        available_sizes = [4, 5]
+    elif total_players > 9:
+        available_sizes = [3, 4]
+    else:
+        available_sizes = [3]
+
     return {
-        "player_count": len(player_names),
+        "player_count": total_players,
         "players": player_names,
-        "available_board_sizes": [3, 4, 5],
+        "available_board_sizes": available_sizes,
     }
 
 
@@ -167,9 +177,25 @@ def start_game(code: str, data: StartGameRequest,
     if game.board_size is not None:
         raise HTTPException(status_code=400, detail="Game already started")
 
-    game.board_size = data.size
-
     participants = db.query(Bingo).filter(Bingo.game_id == game.id).all()
+    total_players = len(participants)
+
+    if total_players > 25:
+        allowed = [5]
+    elif total_players > 16:
+        allowed = [4, 5]
+    elif total_players > 9:
+        allowed = [3, 4]
+    else:
+        allowed = [3]
+
+    if data.size not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Board size {data.size}x{data.size} is not allowed for {total_players} players. Allowed: {allowed}"
+        )
+
+    game.board_size = data.size
 
     for participant in participants:
         create_bingo_matrix(db, game, participant.user_id)
