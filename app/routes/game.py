@@ -224,6 +224,7 @@ def get_game_details(code: str, db: Session = Depends(get_db), current_user: Use
     return GameDetailResponse(
         game_id=game.id,
         host_name=current_user.name,
+        host_image=current_user.profile_image,
         description=game.description,
         location=game.location,
         start_time=game.start_time,
@@ -358,4 +359,7 @@ def tile_submit(
     bingo.points += points
     db.commit()
 
-    return tile
+    return TileSubmit(
+        bingo_id=bingo.id,
+        friend_code=friend_code
+    )
