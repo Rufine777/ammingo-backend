@@ -29,6 +29,7 @@ from app.models.game import (
     LeaderboardEntry,
     LeaderboardResponse,
     TileSubmit,
+    GameStatusResponse,
 )
 import random
 
@@ -142,10 +143,20 @@ def get_lobby(code: str, db: Session = Depends(get_db)):
 
     player_names = [p.name for p in players]
 
+    total_players = len(player_names)
+    if total_players > 25:
+        available_sizes = [5]
+    elif total_players > 16:
+        available_sizes = [4, 5]
+    elif total_players > 9:
+        available_sizes = [3, 4]
+    else:
+        available_sizes = [3]
+
     return {
-        "player_count": len(player_names),
+        "player_count": total_players,
         "players": player_names,
-        "available_board_sizes": [3, 4, 5],
+        "available_board_sizes": available_sizes,
     }
 
 
@@ -166,9 +177,25 @@ def start_game(code: str, data: StartGameRequest,
     if game.board_size is not None:
         raise HTTPException(status_code=400, detail="Game already started")
 
-    game.board_size = data.size
-
     participants = db.query(Bingo).filter(Bingo.game_id == game.id).all()
+    total_players = len(participants)
+
+    if total_players > 25:
+        allowed = [5]
+    elif total_players > 16:
+        allowed = [4, 5]
+    elif total_players > 9:
+        allowed = [3, 4]
+    else:
+        allowed = [3]
+
+    if data.size not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Board size {data.size}x{data.size} is not allowed for {total_players} players. Allowed: {allowed}"
+        )
+
+    game.board_size = data.size
 
     for participant in participants:
         create_bingo_matrix(db, game, participant.user_id)
@@ -196,19 +223,34 @@ def create_bingo_matrix(db: Session, game: Game, user_id: int):
         .all()
     )
 
-    if len(other_players) < total_tiles:
+    if not other_players:
         raise HTTPException(
-            status_code=400, detail=f"Not enough players to fill a {size}x{size} board"
+            status_code=400, detail="Not enough players to start the game. You need at least 2 players."
         )
 
-    random.shuffle(other_players)
-    selected_players = other_players[:total_tiles]
+    if len(other_players) >= total_tiles:
+        random.shuffle(other_players)
+        selected_players = other_players[:total_tiles]
+    else:
+        # Sample with replacement if there are fewer players than board tiles
+        selected_players = random.choices(other_players, k=total_tiles)
 
-    for i, player in enumerate(selected_players):
+    # Collect start characters from selected players
+    unique_start_letters = {p.name.strip()[0].upper() for p in selected_players if p.name.strip()}
+    
+    # If starting letters diversity is low (less than 3 unique letters),
+    # generate random letters from the alphabet A-Z to populate the board tiles.
+    if len(unique_start_letters) < 3:
+        tile_chars = [random.choice(string.ascii_uppercase) for _ in range(total_tiles)]
+    else:
+        tile_chars = [p.name.strip()[0].upper() for p in selected_players]
+        random.shuffle(tile_chars)
+
+    for i, char in enumerate(tile_chars):
         new_tile = BingoTiles(
             row=i // size,
             col=i % size,
-            bingo_char=player.name.strip()[0].upper(),
+            bingo_char=char,
             bingo_id=board.id,
         )
         db.add(new_tile)
@@ -221,10 +263,14 @@ def get_game_details(code: str, db: Session = Depends(get_db), current_user: Use
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
 
+    host = db.query(User).filter(User.id == game.host_id).first()
+    host_name = host.name if host else "Unknown Host"
+    host_pfp = host.profile_image if host else "/uploads/default.png"
+
     return GameDetailResponse(
         game_id=game.id,
-        host_name=current_user.name,
-        host_image=current_user.profile_image,
+        host_name=host_name,
+        host_pfp=host_pfp,
         description=game.description,
         location=game.location,
         start_time=game.start_time,
@@ -260,7 +306,7 @@ def get_user_board(code: str,current_user: User = Depends(get_current_user), db:
         points=board.points,
         tiles=[
             TileResponse(
-                id=tile.id, row=tile.row, col=tile.col, bingo_char=tile.bingo_char
+                id=tile.id, row=tile.row, col=tile.col, bingo_char=tile.bingo_char, image_url=tile.image_url
             )
             for tile in tiles
         ],
@@ -287,6 +333,33 @@ def get_leaderboard(code: str, db: Session = Depends(get_db)):
 
     return LeaderboardResponse(leaderboard=leaderboard)
 
+@router.get("/games/{code}/status", response_model=GameStatusResponse)
+def get_game_status(code: str, db: Session = Depends(get_db)):
+    game = db.query(Game).filter(Game.code == code).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    # Get all boards for this game
+    boards = db.query(Bingo).filter(Bingo.game_id == game.id).all()
+    board_ids = [b.id for b in boards]
+
+    # Calculate tiles_done (tiles where image_url is set)
+    tiles_done = 0
+    if board_ids:
+        tiles_done = db.query(BingoTiles).filter(
+            BingoTiles.bingo_id.in_(board_ids),
+            BingoTiles.image_url.isnot(None)
+        ).count()
+
+    active_players = len(boards)
+    max_cap = 100
+
+    return GameStatusResponse(
+        tiles_done=tiles_done,
+        active_players=active_players,
+        max_cap=max_cap
+    )
+
 @router.post("/games/tile-submit", response_model=TileSubmit)
 def tile_submit(
     bingo_id: int = Form(...),
@@ -298,12 +371,21 @@ def tile_submit(
     image: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
+    print(f"[TILE SUBMIT] Received request: bingo_id={bingo_id}, row={row}, col={col}, friend_name='{friend_name}', friend_code='{friend_code}'")
     friend = (
         db.query(User)
-        .filter(User.name == friend_name, User.code == friend_code)
+        .filter(User.code == friend_code.strip().upper())
         .first()
     )
-    if not friend:
+    if friend:
+        print(f"[TILE SUBMIT] Found friend in DB: id={friend.id}, name='{friend.name}', username='{friend.username}', code='{friend.code}'")
+    else:
+        print(f"[TILE SUBMIT] Friend with code '{friend_code}' NOT found in DB")
+
+    if not friend or (
+        friend.name.strip().lower() != friend_name.strip().lower()
+        and friend.username.strip().lower() != friend_name.strip().lower()
+    ):
         raise HTTPException(status_code=404, detail="Friend not found or code mismatch")
     bingo = db.query(Bingo).filter(Bingo.id == bingo_id).first()
     if not bingo:
@@ -322,6 +404,9 @@ def tile_submit(
         raise HTTPException(status_code=404, detail="Tile not found")
     if tile.image_url:
         raise HTTPException(status_code=400, detail="Tile already submitted")
+
+    if friend.name.strip()[0].upper() != tile.bingo_char:
+        raise HTTPException(status_code=400, detail=f"Friend's name must start with {tile.bingo_char}")
 
     ext = os.path.splitext(image.filename)[-1]
     filename = f"{uuid.uuid4().hex}{ext}"
@@ -359,7 +444,4 @@ def tile_submit(
     bingo.points += points
     db.commit()
 
-    return TileSubmit(
-        bingo_id=bingo.id,
-        friend_code=friend_code
-    )
+    return tile

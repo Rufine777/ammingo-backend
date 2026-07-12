@@ -50,7 +50,7 @@ def upload_profile_image(
 
 
 @router.get("/profile/{user_id}", response_model=UserProfileResponse)
-def get_user_profile(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_user_profile(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     user = db.query(User).filter(User.id == current_user.id).first()
 
     if not user:
@@ -63,6 +63,7 @@ def get_user_profile(db: Session = Depends(get_db), current_user: User = Depends
         name=user.name,
         email=user.email,
         profile_image=image,
+        code=user.code,
     )
 
 
@@ -93,7 +94,8 @@ def update_user_profile(
         username=current_user.username,
         name=current_user.name,
         email=current_user.email,
-        profile_image=current_user.profile_image if current_user.profile_image else "/uploads/default.png"
+        profile_image=current_user.profile_image if current_user.profile_image else "/uploads/default.png",
+        code=current_user.code,
     )
 
 

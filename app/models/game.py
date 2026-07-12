@@ -41,6 +41,7 @@ class StartGameResponse(BaseModel):
 class GameDetailResponse(BaseModel):
     game_id: int
     host_name: str
+    host_pfp: str | None = None
     description: str
     location: str
     start_time: datetime
@@ -55,6 +56,7 @@ class TileResponse(BaseModel):
     row: int
     col: int
     bingo_char: str
+    image_url: str | None = None
 
 
 class BingoBoardResponse(BaseModel):
@@ -73,5 +75,15 @@ class LeaderboardResponse(BaseModel):
     leaderboard: list[LeaderboardEntry]
 
 class TileSubmit(BaseModel):
+    id: int
+    row: int
+    col: int
+    bingo_char: str
     bingo_id: int
-    friend_code: int
+    image_url: str | None = None
+    random_fact: str | None = None
+
+class GameStatusResponse(BaseModel):
+    tiles_done: int
+    active_players: int
+    max_cap: int
