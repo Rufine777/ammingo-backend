@@ -17,7 +17,6 @@ from app.db.models import Game, Bingo, User, BingoTiles
 from datetime import datetime, timedelta, timezone
 from app.models.game import (
     CreateGameRequest,
-    JoinGameRequest,
     StartGameRequest,
     CreateGameResponse,
     JoinGameResponse,
@@ -92,7 +91,7 @@ def create_game(data: CreateGameRequest, db: Session = Depends(get_db), current_
 
 
 @router.post("/games/join/{code}", response_model=JoinGameResponse)
-def join_game(code: str, data: JoinGameRequest, 
+def join_game(code: str,
       db: Session = Depends(get_db), 
       current_user = Depends(get_current_user)
     ):
